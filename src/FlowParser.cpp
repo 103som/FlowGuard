@@ -3,7 +3,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <unordered_map>
 #include <utility>
 
@@ -22,23 +21,66 @@
 namespace diploma {
 namespace {
 
+// CICIDS2017 labels were generated with CICFlowMeter-style biflows.
+// Important semantics we try to mirror here:
+// 1) The FIRST packet of a flow instance defines forward/backward direction.
+// 2) TCP flows are split by timeout and are closed on the first FIN/RST packet
+//    to mimic the original CICFlowMeter behavior used for the dataset.
+// 3) UDP flows are split by timeout; first packet defines direction.
+// 4) Each timeout/reopen creates a distinct flow_instance.
+//
+// See CIC documentation / repo notes on biflows and timeout handling, and the
+// CICIDS2017 troubleshooting study describing first-FIN appendices.
+
+constexpr uint64_t kCicids2017FlowTimeoutNs = 120ULL * 1'000'000'000ULL; // 120s
+
+struct FlowBaseKey {
+    std::string ip_a;
+    std::string ip_b;
+    uint16_t port_a = 0;
+    uint16_t port_b = 0;
+    uint8_t proto = 0;
+
+    bool operator==(const FlowBaseKey& other) const = default;
+};
+
+struct FlowBaseKeyHash {
+    size_t operator()(const FlowBaseKey& key) const noexcept {
+        size_t h = 1469598103934665603ULL;
+
+        auto mix = [&h](size_t v) {
+            h ^= v;
+            h *= 1099511628211ULL;
+        };
+
+        mix(std::hash<std::string>{}(key.ip_a));
+        mix(std::hash<std::string>{}(key.ip_b));
+        mix(std::hash<uint16_t>{}(key.port_a));
+        mix(std::hash<uint16_t>{}(key.port_b));
+        mix(std::hash<uint8_t>{}(key.proto));
+
+        return h;
+    }
+};
+
 struct FlowRuntimeState {
+    uint64_t first_ts_ns = 0;
     TcpStreamReassembler client_stream;
     bool ja4_extracted = false;
 };
 
-struct TcpStrictKey {
+struct DirectedKey {
     std::string src_ip;
     std::string dst_ip;
     uint16_t src_port = 0;
     uint16_t dst_port = 0;
-    uint8_t proto = 6;
+    uint8_t proto = 0;
 
-    bool operator==(const TcpStrictKey& other) const = default;
+    bool operator==(const DirectedKey& other) const = default;
 };
 
-struct TcpStrictKeyHash {
-    size_t operator()(const TcpStrictKey& key) const noexcept {
+struct DirectedKeyHash {
+    size_t operator()(const DirectedKey& key) const noexcept {
         size_t h = 1469598103934665603ULL;
 
         auto mix = [&h](size_t v) {
@@ -56,34 +98,7 @@ struct TcpStrictKeyHash {
     }
 };
 
-struct TcpLooseKey {
-    std::string server_ip;
-    uint16_t server_port = 0;
-    uint16_t client_port = 0;
-    uint8_t proto = 6;
-
-    bool operator==(const TcpLooseKey& other) const = default;
-};
-
-struct TcpLooseKeyHash {
-    size_t operator()(const TcpLooseKey& key) const noexcept {
-        size_t h = 1469598103934665603ULL;
-
-        auto mix = [&h](size_t v) {
-            h ^= v;
-            h *= 1099511628211ULL;
-        };
-
-        mix(std::hash<std::string>{}(key.server_ip));
-        mix(std::hash<uint16_t>{}(key.server_port));
-        mix(std::hash<uint16_t>{}(key.client_port));
-        mix(std::hash<uint8_t>{}(key.proto));
-
-        return h;
-    }
-};
-
-struct MatchedTcpFlow {
+struct MatchedFlow {
     FlowKey key;
     bool from_client = false;
 };
@@ -91,16 +106,6 @@ struct MatchedTcpFlow {
 uint64_t tsToNs(const timespec& ts) {
     return static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000ULL +
            static_cast<uint64_t>(ts.tv_nsec);
-}
-
-void normalizeBidirectional(FlowKey& key) {
-    const auto lhs = std::tie(key.ip_a, key.port_a);
-    const auto rhs = std::tie(key.ip_b, key.port_b);
-
-    if (rhs < lhs) {
-        std::swap(key.ip_a, key.ip_b);
-        std::swap(key.port_a, key.port_b);
-    }
 }
 
 struct PacketMeta {
@@ -114,9 +119,8 @@ struct PacketMeta {
     uint16_t orig_dst_port = 0;
     uint8_t proto = 0;
 
-    FlowKey key;
-
     bool is_tcp = false;
+    bool is_udp = false;
     bool syn = false;
     bool ack = false;
     bool fin = false;
@@ -140,19 +144,14 @@ std::unique_ptr<pcpp::IFileReaderDevice> openReader(const std::string& path) {
     return reader;
 }
 
-bool packetSrcIsEndpointA(const PacketMeta& meta) {
-    return meta.orig_src_ip == meta.key.ip_a &&
-           meta.orig_src_port == meta.key.port_a;
-}
-
-static TcpStrictKey makeStrictKey(
+static DirectedKey makeDirectedKey(
     const std::string& src_ip,
     const std::string& dst_ip,
     uint16_t src_port,
     uint16_t dst_port,
     uint8_t proto
 ) {
-    return TcpStrictKey{
+    return DirectedKey{
         .src_ip = src_ip,
         .dst_ip = dst_ip,
         .src_port = src_port,
@@ -161,43 +160,47 @@ static TcpStrictKey makeStrictKey(
     };
 }
 
-static TcpLooseKey makeLooseKey(
-    const std::string& server_ip,
-    uint16_t server_port,
-    uint16_t client_port,
-    uint8_t proto
-) {
-    return TcpLooseKey{
-        .server_ip = server_ip,
-        .server_port = server_port,
-        .client_port = client_port,
-        .proto = proto,
+static FlowBaseKey toBaseKey(const FlowKey& key) {
+    return FlowBaseKey{
+        .ip_a = key.ip_a,
+        .ip_b = key.ip_b,
+        .port_a = key.port_a,
+        .port_b = key.port_b,
+        .proto = key.proto,
     };
 }
 
-static FlowKey makeCanonicalTcpFlowKey(
-    const std::string& client_ip,
-    const std::string& server_ip,
-    uint16_t client_port,
-    uint16_t server_port,
-    uint8_t proto
-) {
+static FlowKey makeFlowKey(const FlowBaseKey& base, uint64_t instance) {
     return FlowKey{
-        .ip_a = client_ip,
-        .ip_b = server_ip,
-        .port_a = client_port,
-        .port_b = server_port,
-        .proto = proto,
+        .ip_a = base.ip_a,
+        .ip_b = base.ip_b,
+        .port_a = base.port_a,
+        .port_b = base.port_b,
+        .proto = base.proto,
+        .flow_instance = instance,
     };
 }
 
-static void registerTcpFlow(
-    const FlowKey& flow_key,
-    std::unordered_map<TcpStrictKey, FlowKey, TcpStrictKeyHash>& strict_tcp_sessions,
-    std::unordered_map<TcpLooseKey, FlowKey, TcpLooseKeyHash>& loose_tcp_sessions
+static bool packetIsFromAtoB(const PacketMeta& meta, const FlowKey& key) {
+    return meta.orig_src_ip == key.ip_a &&
+           meta.orig_src_port == key.port_a;
+}
+
+static FlowKey nextFlowInstance(
+    const FlowBaseKey& base,
+    std::unordered_map<FlowBaseKey, uint64_t, FlowBaseKeyHash>& next_instance_by_base
 ) {
-    // strict: обе стороны полного 4-tuple
-    strict_tcp_sessions[makeStrictKey(
+    uint64_t& next_instance = next_instance_by_base[base];
+    FlowKey key = makeFlowKey(base, next_instance);
+    ++next_instance;
+    return key;
+}
+
+static void registerFlowBidirectional(
+    const FlowKey& flow_key,
+    std::unordered_map<DirectedKey, FlowKey, DirectedKeyHash>& sessions
+) {
+    sessions[makeDirectedKey(
         flow_key.ip_a,
         flow_key.ip_b,
         flow_key.port_a,
@@ -205,134 +208,157 @@ static void registerTcpFlow(
         flow_key.proto
     )] = flow_key;
 
-    strict_tcp_sessions[makeStrictKey(
+    sessions[makeDirectedKey(
         flow_key.ip_b,
         flow_key.ip_a,
-        flow_key.port_b,
-        flow_key.port_a,
-        flow_key.proto
-    )] = flow_key;
-
-    // loose: server_ip + server_port + client_port
-    loose_tcp_sessions[makeLooseKey(
-        flow_key.ip_b,
         flow_key.port_b,
         flow_key.port_a,
         flow_key.proto
     )] = flow_key;
 }
 
-static std::optional<MatchedTcpFlow> matchTcpFlow(
+static void unregisterFlowBidirectional(
+    const FlowKey& flow_key,
+    std::unordered_map<DirectedKey, FlowKey, DirectedKeyHash>& sessions
+) {
+    sessions.erase(makeDirectedKey(
+        flow_key.ip_a,
+        flow_key.ip_b,
+        flow_key.port_a,
+        flow_key.port_b,
+        flow_key.proto
+    ));
+
+    sessions.erase(makeDirectedKey(
+        flow_key.ip_b,
+        flow_key.ip_a,
+        flow_key.port_b,
+        flow_key.port_a,
+        flow_key.proto
+    ));
+}
+
+static bool isFlowTimedOut(
+    const FlowKey& flow_key,
+    uint64_t packet_ts_ns,
+    const std::unordered_map<FlowKey, FlowRuntimeState, FlowKeyHash>& runtime_state
+) {
+    auto it = runtime_state.find(flow_key);
+    if (it == runtime_state.end()) {
+        return false;
+    }
+
+    return packet_ts_ns > it->second.first_ts_ns &&
+           (packet_ts_ns - it->second.first_ts_ns) > kCicids2017FlowTimeoutNs;
+}
+
+static FlowKey recreateTimedOutFlow(
+    const FlowKey& old_flow_key,
+    std::unordered_map<FlowBaseKey, uint64_t, FlowBaseKeyHash>& next_instance_by_base
+) {
+    return nextFlowInstance(toBaseKey(old_flow_key), next_instance_by_base);
+}
+
+static std::optional<MatchedFlow> matchTcpFlow(
     const PacketMeta& meta,
-    std::unordered_map<TcpStrictKey, FlowKey, TcpStrictKeyHash>& strict_tcp_sessions,
-    std::unordered_map<TcpLooseKey, FlowKey, TcpLooseKeyHash>& loose_tcp_sessions
+    std::unordered_map<DirectedKey, FlowKey, DirectedKeyHash>& tcp_sessions,
+    std::unordered_map<FlowBaseKey, uint64_t, FlowBaseKeyHash>& next_instance_by_base
 ) {
     if (!meta.is_tcp) {
         return std::nullopt;
     }
 
-    // Новый TCP-сеанс: SYN без ACK — источник истины
+    // SYN without ACK starts a fresh TCP biflow; first packet defines direction.
     if (meta.syn && !meta.ack) {
-        FlowKey flow_key = makeCanonicalTcpFlowKey(
-            meta.orig_src_ip,
-            meta.orig_dst_ip,
-            meta.orig_src_port,
-            meta.orig_dst_port,
-            meta.proto
-        );
+        FlowBaseKey base{
+            .ip_a = meta.orig_src_ip,
+            .ip_b = meta.orig_dst_ip,
+            .port_a = meta.orig_src_port,
+            .port_b = meta.orig_dst_port,
+            .proto = meta.proto,
+        };
 
-        registerTcpFlow(flow_key, strict_tcp_sessions, loose_tcp_sessions);
+        FlowKey flow_key = nextFlowInstance(base, next_instance_by_base);
+        registerFlowBidirectional(flow_key, tcp_sessions);
 
-        return MatchedTcpFlow{
+        return MatchedFlow{
             .key = std::move(flow_key),
             .from_client = true,
         };
     }
 
-    // 1) Пробуем strict matching по полному текущему направленному 4-tuple
-    if (auto it = strict_tcp_sessions.find(makeStrictKey(
+    if (auto it = tcp_sessions.find(makeDirectedKey(
             meta.orig_src_ip,
             meta.orig_dst_ip,
             meta.orig_src_port,
             meta.orig_dst_port,
             meta.proto
         ));
-        it != strict_tcp_sessions.end()) {
-        const bool from_client =
-            meta.orig_src_ip == it->second.ip_a &&
-            meta.orig_src_port == it->second.port_a;
-
-        return MatchedTcpFlow{
+        it != tcp_sessions.end()) {
+        return MatchedFlow{
             .key = it->second,
-            .from_client = from_client,
+            .from_client = packetIsFromAtoB(meta, it->second),
         };
     }
 
-    // 2) Fallback: packet выглядит как client -> server
-    if (auto it = loose_tcp_sessions.find(makeLooseKey(
+    // Midstream fallback: do NOT infer client/server from port numbers.
+    // Start a new flow instance and let the first observed packet define direction,
+    // just like CICFlowMeter biflow semantics.
+    FlowBaseKey base{
+        .ip_a = meta.orig_src_ip,
+        .ip_b = meta.orig_dst_ip,
+        .port_a = meta.orig_src_port,
+        .port_b = meta.orig_dst_port,
+        .proto = meta.proto,
+    };
+
+    FlowKey flow_key = nextFlowInstance(base, next_instance_by_base);
+    registerFlowBidirectional(flow_key, tcp_sessions);
+
+    return MatchedFlow{
+        .key = std::move(flow_key),
+        .from_client = true,
+    };
+}
+
+static std::optional<MatchedFlow> matchUdpFlow(
+    const PacketMeta& meta,
+    std::unordered_map<DirectedKey, FlowKey, DirectedKeyHash>& udp_sessions,
+    std::unordered_map<FlowBaseKey, uint64_t, FlowBaseKeyHash>& next_instance_by_base
+) {
+    if (!meta.is_udp) {
+        return std::nullopt;
+    }
+
+    if (auto it = udp_sessions.find(makeDirectedKey(
+            meta.orig_src_ip,
             meta.orig_dst_ip,
-            meta.orig_dst_port,
             meta.orig_src_port,
+            meta.orig_dst_port,
             meta.proto
         ));
-        it != loose_tcp_sessions.end()) {
-        return MatchedTcpFlow{
+        it != udp_sessions.end()) {
+        return MatchedFlow{
             .key = it->second,
-            .from_client = true,
+            .from_client = packetIsFromAtoB(meta, it->second),
         };
     }
 
-    // 3) Fallback: packet выглядит как server -> client
-    if (auto it = loose_tcp_sessions.find(makeLooseKey(
-            meta.orig_src_ip,
-            meta.orig_src_port,
-            meta.orig_dst_port,
-            meta.proto
-        ));
-        it != loose_tcp_sessions.end()) {
-        return MatchedTcpFlow{
-            .key = it->second,
-            .from_client = false,
-        };
-    }
+    FlowBaseKey base{
+        .ip_a = meta.orig_src_ip,
+        .ip_b = meta.orig_dst_ip,
+        .port_a = meta.orig_src_port,
+        .port_b = meta.orig_dst_port,
+        .proto = meta.proto,
+    };
 
-    // 4) Midstream fallback без SYN:
-    // меньший порт считаем серверным
-    if (meta.orig_dst_port < meta.orig_src_port) {
-        FlowKey flow_key = makeCanonicalTcpFlowKey(
-            meta.orig_src_ip,
-            meta.orig_dst_ip,
-            meta.orig_src_port,
-            meta.orig_dst_port,
-            meta.proto
-        );
+    FlowKey flow_key = nextFlowInstance(base, next_instance_by_base);
+    registerFlowBidirectional(flow_key, udp_sessions);
 
-        registerTcpFlow(flow_key, strict_tcp_sessions, loose_tcp_sessions);
-
-        return MatchedTcpFlow{
-            .key = std::move(flow_key),
-            .from_client = true,
-        };
-    }
-
-    if (meta.orig_src_port < meta.orig_dst_port) {
-        FlowKey flow_key = makeCanonicalTcpFlowKey(
-            meta.orig_dst_ip,
-            meta.orig_src_ip,
-            meta.orig_dst_port,
-            meta.orig_src_port,
-            meta.proto
-        );
-
-        registerTcpFlow(flow_key, strict_tcp_sessions, loose_tcp_sessions);
-
-        return MatchedTcpFlow{
-            .key = std::move(flow_key),
-            .from_client = false,
-        };
-    }
-
-    return std::nullopt;
+    return MatchedFlow{
+        .key = std::move(flow_key),
+        .from_client = true,
+    };
 }
 
 static uint32_t tcpSequenceToHostOrder(const pcpp::tcphdr* hdr) {
@@ -359,10 +385,6 @@ std::optional<PacketMeta> parsePacketMeta(const pcpp::Packet& packet, const pcpp
         return std::nullopt;
     }
 
-    meta.key.ip_a = meta.orig_src_ip;
-    meta.key.ip_b = meta.orig_dst_ip;
-    meta.key.proto = meta.proto;
-
     if (meta.proto == 6) {
         auto* tcp = packet.getLayerOfType<pcpp::TcpLayer>();
         if (tcp == nullptr) {
@@ -371,10 +393,6 @@ std::optional<PacketMeta> parsePacketMeta(const pcpp::Packet& packet, const pcpp
 
         meta.orig_src_port = tcp->getSrcPort();
         meta.orig_dst_port = tcp->getDstPort();
-
-        meta.key.port_a = meta.orig_src_port;
-        meta.key.port_b = meta.orig_dst_port;
-
         meta.is_tcp = true;
 
         const auto* hdr = tcp->getTcpHeader();
@@ -391,11 +409,7 @@ std::optional<PacketMeta> parsePacketMeta(const pcpp::Packet& packet, const pcpp
 
         meta.orig_src_port = udp->getSrcPort();
         meta.orig_dst_port = udp->getDstPort();
-
-        meta.key.port_a = meta.orig_src_port;
-        meta.key.port_b = meta.orig_dst_port;
-
-        normalizeBidirectional(meta.key);
+        meta.is_udp = true;
     } else {
         return std::nullopt;
     }
@@ -413,8 +427,19 @@ ParseResult FlowParser::parseFile(const std::string& path) const {
     ParseResult result;
 
     std::unordered_map<FlowKey, FlowRuntimeState, FlowKeyHash> runtime_state;
-    std::unordered_map<TcpStrictKey, FlowKey, TcpStrictKeyHash> strict_tcp_sessions;
-    std::unordered_map<TcpLooseKey, FlowKey, TcpLooseKeyHash> loose_tcp_sessions;
+    std::unordered_map<FlowBaseKey, uint64_t, FlowBaseKeyHash> next_instance_by_base;
+    std::unordered_map<DirectedKey, FlowKey, DirectedKeyHash> tcp_sessions;
+    std::unordered_map<DirectedKey, FlowKey, DirectedKeyHash> udp_sessions;
+
+    auto closeTcpFlow = [&](const FlowKey& flow_key) {
+        unregisterFlowBidirectional(flow_key, tcp_sessions);
+        runtime_state.erase(flow_key);
+    };
+
+    auto closeUdpFlow = [&](const FlowKey& flow_key) {
+        unregisterFlowBidirectional(flow_key, udp_sessions);
+        runtime_state.erase(flow_key);
+    };
 
     auto reader = openReader(path);
     if (!reader) {
@@ -437,26 +462,48 @@ ParseResult FlowParser::parseFile(const std::string& path) const {
         bool from_client = false;
 
         if (meta->is_tcp) {
-            auto matched = matchTcpFlow(*meta, strict_tcp_sessions, loose_tcp_sessions);
+            auto matched = matchTcpFlow(*meta, tcp_sessions, next_instance_by_base);
             if (!matched.has_value()) {
                 continue;
             }
 
             flow_key = matched->key;
             from_client = matched->from_client;
+
+            if (isFlowTimedOut(flow_key, meta->ts_ns, runtime_state)) {
+                closeTcpFlow(flow_key);
+                flow_key = recreateTimedOutFlow(flow_key, next_instance_by_base);
+                registerFlowBidirectional(flow_key, tcp_sessions);
+                from_client = packetIsFromAtoB(*meta, flow_key);
+            }
         } else {
-            flow_key = meta->key;
-            from_client = packetSrcIsEndpointA(*meta);
+            auto matched = matchUdpFlow(*meta, udp_sessions, next_instance_by_base);
+            if (!matched.has_value()) {
+                continue;
+            }
+
+            flow_key = matched->key;
+            from_client = matched->from_client;
+
+            if (isFlowTimedOut(flow_key, meta->ts_ns, runtime_state)) {
+                closeUdpFlow(flow_key);
+                flow_key = recreateTimedOutFlow(flow_key, next_instance_by_base);
+                registerFlowBidirectional(flow_key, udp_sessions);
+                from_client = packetIsFromAtoB(*meta, flow_key);
+            }
         }
 
         auto& st = result.flows[flow_key];
+        auto& rt = runtime_state[flow_key];
 
         if (!st.initialized) {
             st.initialized = true;
             st.first_ts_ns = meta->ts_ns;
+            st.client_is_a = true;
 
-            // Для TCP canonical key всегда: a = client, b = server
-            st.client_is_a = meta->is_tcp ? true : packetSrcIsEndpointA(*meta);
+            rt.first_ts_ns = meta->ts_ns;
+            rt.ja4_extracted = false;
+            rt.client_stream.clear();
         }
 
         st.last_ts_ns = meta->ts_ns;
@@ -489,8 +536,6 @@ ParseResult FlowParser::parseFile(const std::string& path) const {
                 st.tcp_synack_s2c += 1;
             }
 
-            auto& rt = runtime_state[flow_key];
-
             if (from_client && ja4_parser_ != nullptr && !rt.ja4_extracted) {
                 auto* tcp = packet.getLayerOfType<pcpp::TcpLayer>();
                 if (tcp != nullptr) {
@@ -513,6 +558,12 @@ ParseResult FlowParser::parseFile(const std::string& path) const {
                         }
                     }
                 }
+            }
+
+            // To mimic the original CICFlowMeter behavior used in CICIDS2017,
+            // terminate the TCP flow on the first FIN or RST packet.
+            if (meta->rst || meta->fin) {
+                closeTcpFlow(flow_key);
             }
         }
     }

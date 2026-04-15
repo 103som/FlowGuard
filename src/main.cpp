@@ -47,7 +47,7 @@ bool writeCsv(const std::string& output_path, const diploma::ParseResult& result
            "packets_total,packets_c2s,packets_s2c,"
            "bytes_cap_total,bytes_cap_c2s,bytes_cap_s2c,"
            "bytes_wire_total,bytes_wire_c2s,bytes_wire_s2c,"
-           "duration_ns,"
+           "first_ts_ns,last_ts_ns,duration_ns,"
            "tcp_syn_total,tcp_syn_c2s,tcp_synack_s2c,"
            "tcp_ack_total,tcp_fin_total,tcp_rst_total,tcp_psh_total,"
            "tls_client_hello_c2s,"
@@ -106,6 +106,8 @@ bool writeCsv(const std::string& output_path, const diploma::ParseResult& result
             << st.bytes_wire_total << ','
             << st.bytes_wire_c2s << ','
             << st.bytes_wire_s2c << ','
+            << st.first_ts_ns << ','
+            << st.last_ts_ns << ','
             << duration_ns << ','
             << st.tcp_syn_total << ','
             << st.tcp_syn_c2s << ','

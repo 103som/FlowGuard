@@ -24,6 +24,7 @@ struct FlowKey {
     uint16_t port_a = 0;
     uint16_t port_b = 0;
     uint8_t proto = 0; // 6 = TCP, 17 = UDP
+    uint64_t flow_instance = 0; // internal unique instance for timeout-splitting
 
     bool operator==(const FlowKey& other) const = default;
 };
@@ -42,6 +43,7 @@ struct FlowKeyHash {
         mix(std::hash<uint16_t>{}(key.port_a));
         mix(std::hash<uint16_t>{}(key.port_b));
         mix(std::hash<uint8_t>{}(key.proto));
+        mix(std::hash<uint64_t>{}(key.flow_instance));
 
         return h;
     }
