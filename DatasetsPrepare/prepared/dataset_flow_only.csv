@@ -1,0 +1,2 @@
+proto,packets_total,packets_c2s,packets_s2c,bytes_cap_total,bytes_cap_c2s,bytes_cap_s2c,bytes_wire_total,bytes_wire_c2s,bytes_wire_s2c,duration_ms,tcp_syn_total,tcp_syn_c2s,tcp_synack_s2c,tcp_ack_total,tcp_fin_total,tcp_rst_total,tcp_psh_total,avg_wirelen_total,bytes_ratio_c2s_s2c,packets_ratio_c2s_s2c,pps_total,bps_total,is_tcp,is_udp
+6,38,18,20,7156,2643,4513,7156,2643,4513,59019.83768,2,1,1,37,2,0,17,188.316,0.5856414801684023,0.9,0.6438513132827036,121.24736836450073,1,0
