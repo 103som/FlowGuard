@@ -1,0 +1,44 @@
+{
+  "seed": 42,
+  "feature_set": "flow_plus_ja4",
+  "scale_pos_weight": 1.314060446780552,
+  "selected_threshold_from_val": 0.38828972854999627,
+  "best_val_threshold_metrics": {
+    "threshold": 0.38828972854999627,
+    "precision": 0.9847094801223242,
+    "recall": 0.9877300613496932,
+    "f1": 0.9862174578866769,
+    "f2": 0.9871244635193133,
+    "balanced_accuracy": 0.9876150306748466
+  },
+  "val_metrics": {
+    "threshold": 0.38828972854999627,
+    "precision": 0.9847094801223242,
+    "recall": 0.9877300613496932,
+    "f1": 0.9862174578866769,
+    "balanced_accuracy": 0.9876150306748466,
+    "average_precision": 0.9990049367079615,
+    "roc_auc": 0.9991641104294479,
+    "confusion_matrix": {
+      "tn": 395,
+      "fp": 5,
+      "fn": 4,
+      "tp": 322
+    }
+  },
+  "test_metrics": {
+    "threshold": 0.38828972854999627,
+    "precision": 0.9611940298507463,
+    "recall": 0.9907692307692307,
+    "f1": 0.9757575757575757,
+    "balanced_accuracy": 0.9791346153846154,
+    "average_precision": 0.9958033395553803,
+    "roc_auc": 0.9968076923076923,
+    "confusion_matrix": {
+      "tn": 387,
+      "fp": 13,
+      "fn": 3,
+      "tp": 322
+    }
+  }
+}
