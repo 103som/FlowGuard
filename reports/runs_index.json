@@ -1,0 +1,46 @@
+[
+  {
+    "timestamp": "2026-04-19T13:15:07+03:00",
+    "dataset": "demo_showcase",
+    "model": "flow_plus_ja4",
+    "reports_dir": "/home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase",
+    "duration_seconds": 4,
+    "flows_total": 1476,
+    "anomalies_total": 300,
+    "incidents_total": 127,
+    "top_category": "Веерное сканирование портов"
+  },
+  {
+    "timestamp": "2026-04-19T12:51:01+03:00",
+    "dataset": "demo_showcase",
+    "model": "flow_only",
+    "reports_dir": "/home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase",
+    "duration_seconds": 4,
+    "flows_total": 1476,
+    "anomalies_total": 279,
+    "incidents_total": 124,
+    "top_category": "Веерное сканирование портов"
+  },
+  {
+    "timestamp": "2026-04-19T12:31:37+03:00",
+    "dataset": "datasets",
+    "model": "flow_plus_ja4",
+    "reports_dir": "/home/morf/Desktop/Project/FlowGuard/reports/latest/datasets",
+    "duration_seconds": 3,
+    "flows_total": 79,
+    "anomalies_total": 22,
+    "incidents_total": 12,
+    "top_category": "Подозрительный TLS-профиль"
+  },
+  {
+    "timestamp": "2026-04-19T05:16:13+03:00",
+    "dataset": "demo_showcase",
+    "model": "flow_plus_ja4",
+    "reports_dir": "/home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase",
+    "duration_seconds": 4,
+    "flows_total": 1476,
+    "anomalies_total": 300,
+    "incidents_total": 127,
+    "top_category": "Веерное сканирование портов"
+  }
+]

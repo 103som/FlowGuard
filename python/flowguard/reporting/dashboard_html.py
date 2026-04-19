@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-FlowGuard Dashboard (версия 4 — финальная).
+FlowGuard Dashboard (версия 5 — финал для защиты).
 
-Ключевые улучшения относительно v3:
-1. Адаптивный масштаб временной шкалы (подписи не налезают друг на друга)
-2. Упрощена таблица инцидентов: убран severity_score, packets_max, bytes_max
-3. Синхронизированы высоты парных панелей (pie + heatmap)
-4. Опциональное объединение схожих категорий (параметр --merge-categories)
-5. Терминология: "инцидент" можно заменить на "кластер аномалий" (параметр --incident-label)
-6. Убрана колонка severity_score из heatmap (там только severity_level)
-7. Улучшена читаемость: меньше колонок, больше воздуха
+Ключевые улучшения относительно v4:
+1. Range slider на временной шкале (маленький mini-map для скроллинга периода)
+2. В колонках таблиц указаны единицы измерения (шт, Б, с)
+3. Умное отображение медианы и моды: при flows=1 — просто значение;
+   при flows≥2 и mode==median — одна колонка; при разных — "мед / мода"
+4. Чёткое разделение рядов графиков через отступы
+5. Выровнены панели pie + heatmap
+6. Убран --merge-categories (static_analyzer v3 уже сам объединяет)
+7. Автоматическое форматирование байт в КБ/МБ где уместно
 """
 from __future__ import annotations
 
@@ -36,47 +37,15 @@ SEVERITY_RU = {
     "Низкий": "Низкий",
 }
 
-# Локализация технических терминов в названиях категорий
+# Локализация технических терминов в названиях категорий.
+# В static_analyzer v3 категории уже на русском и без скобок,
+# но если используется старый v2 — эти замены подстрахуют.
 CATEGORY_TERM_REPLACEMENTS = [
-    ("(fan-out)", "(веерное)"),
-    ("(C2 beacon)", "(C2-маяк)"),
-    ("ML-аномалия потока", "Аномалия без явного паттерна"),
+    ("(fan-out)", ""),
+    ("(C2 beacon)", ""),
+    (" (веерное)", ""),
+    ("ML-аномалия потока", "Неклассифицированная аномалия"),
 ]
-
-# Объединение схожих категорий (применяется если --merge-categories)
-CATEGORY_MERGE_MAP = {
-    # C2-взаимодействие
-    "Периодический TLS-маяк (C2 beacon)": "C2-маяк (TLS)",
-    "Периодический TLS-маяк (C2-маяк)": "C2-маяк (TLS)",
-    "Длительный малошумный TLS-канал": "C2-маяк (TLS)",
-    "Повторяющиеся короткие TLS-сеансы": "C2-маяк (TLS)",
-    "Высокооценённый TLS-кластер": "C2-маяк (TLS)",
-
-    # Сканирования
-    "Сканирование портов (fan-out)": "Сканирование портов",
-    "Сканирование портов (веерное)": "Сканирование портов",
-    "Сканирование сети (host discovery)": "Сканирование сети",
-
-    # Эксфильтрация
-    "Крупный исходящий поток (возможная эксфильтрация)": "Эксфильтрация (исходящий поток)",
-    "Крупный исходящий поток": "Эксфильтрация (исходящий поток)",
-
-    # Подозрительные TLS-профили (объединяем 3 близких типа)
-    "Подозрительный TLS-профиль": "Подозрительный TLS-профиль",
-    "TLS без SNI": "Подозрительный TLS-профиль",
-    "TLS без ALPN / нестандартный ALPN": "Подозрительный TLS-профиль",
-    "TLS на нестандартном порту": "Подозрительный TLS-профиль",
-
-    # Одиночные аномалии
-    "Короткая TLS-сессия": "Одиночная TLS-аномалия",
-    "Длительное малошумное TLS-соединение": "Одиночная TLS-аномалия",
-    "Активный клиент с множеством TLS-соединений": "Одиночная TLS-аномалия",
-
-    # Fallback
-    "TLS-аномалия без явного паттерна": "Неклассифицированная аномалия",
-    "Нетипичный трафик": "Неклассифицированная аномалия",
-    "Аномалия без явного паттерна": "Неклассифицированная аномалия",
-}
 
 COLUMN_RU = {
     "incident_id": "ID",
@@ -90,18 +59,18 @@ COLUMN_RU = {
     "severity_score": "Балл серьёзности",
     "avg_score": "Средняя оценка",
     "max_score": "Максимальная оценка",
-    "flows": "Сессий",
-    "flows_sum": "Сессий (сумма)",
-    "incidents": "Инцидентов",
-    "duration_median_s": "Длительность (медиана), с",
-    "packets_median": "Пакеты (медиана)",
-    "packets_mode": "Пакеты (мода)",
-    "packets_max": "Пакеты (пик)",
-    "bytes_median": "Байты (медиана)",
-    "bytes_mode": "Байты (мода)",
-    "bytes_max": "Байты (пик)",
+    "flows": "Сессий, шт",
+    "flows_sum": "Сессий (сумма), шт",
+    "incidents": "Инцидентов, шт",
+    "duration_median_s": "Длительность, с",
+    "packets_median": "Пакетов, шт",
+    "packets_mode": "Пакетов (мода), шт",
+    "packets_max": "Пакетов (пик), шт",
+    "bytes_median": "Трафик",
+    "bytes_mode": "Трафик (мода)",
+    "bytes_max": "Трафик (пик)",
     "characteristic": "Характеристика",
-    "anomaly_flows": "Аномальных сессий",
+    "anomaly_flows": "Аномальных сессий, шт",
     "unique_servers": "Уникальных назначений",
     "unique_clients": "Уникальных источников",
     "unique_ports": "Уникальных портов",
@@ -109,12 +78,13 @@ COLUMN_RU = {
     "timeline_bucket_s": "Интервал",
     "anomaly_score": "Оценка аномальности",
     "duration_s": "Длительность, с",
-    "packets_total": "Пакеты",
-    "bytes_wire_total": "Байты",
+    "packets_total": "Пакетов, шт",
+    "bytes_wire_total": "Трафик",
     "top_category_in_pair": "Главная категория",
 }
 
 # Колонки главной таблицы — компактный набор
+# "packets_combined" и "bytes_combined" — объединённые колонки (медиана + мода)
 TOP_INCIDENTS_DISPLAY_COLS = [
     "incident_id",
     "time_start_s",
@@ -125,12 +95,14 @@ TOP_INCIDENTS_DISPLAY_COLS = [
     "severity_level",
     "flows",
     "duration_median_s",
-    "packets_median",
-    "packets_mode",
-    "bytes_median",
-    "bytes_mode",
+    "packets_combined",
+    "bytes_combined",
     "characteristic",
 ]
+
+# Добавляем заголовки для новых объединённых колонок
+COLUMN_RU["packets_combined"] = "Пакетов, шт"
+COLUMN_RU["bytes_combined"] = "Трафик"
 
 
 def parse_args() -> argparse.Namespace:
@@ -139,8 +111,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output", default=None, help="Путь к выходному HTML")
     p.add_argument("--title", default="FlowGuard: анализ аномальной сетевой активности")
     p.add_argument("--top-n", type=int, default=200, help="Сколько инцидентов показать")
-    p.add_argument("--merge-categories", action="store_true",
-                   help="Объединить схожие категории (18 → ~10 для презентации)")
     p.add_argument("--incident-label", default="инцидент",
                    choices=["инцидент", "кластер", "взаимодействие"],
                    help="Как называть элементы таблицы")
@@ -185,31 +155,60 @@ def format_timestamp(value, include_date: bool = True) -> str:
 
 
 def localize_category(value: str) -> str:
-    """Заменяет англицизмы в названии категории на русские эквиваленты."""
+    """Заменяет англицизмы в названии категории на русские эквиваленты.
+    Для v3 анализатора это по сути no-op, но подстраховывает при работе со старыми данными."""
     if not isinstance(value, str):
         return value
     result = value
     for src, dst in CATEGORY_TERM_REPLACEMENTS:
         result = result.replace(src, dst)
-    return result
+    return result.strip()
 
 
-def merge_category(value: str) -> str:
-    """Объединяет схожие категории в более общие (если включён режим merge)."""
-    if not isinstance(value, str):
-        return value
-    localized = localize_category(value)
-    return CATEGORY_MERGE_MAP.get(localized, CATEGORY_MERGE_MAP.get(value, localized))
+def format_bytes_human(value) -> str:
+    """Форматирует байты в человеко-читаемом виде: 1234 Б / 12.3 КБ / 1.2 МБ."""
+    try:
+        v = float(value)
+    except (ValueError, TypeError):
+        return str(value)
+    if v < 1024:
+        return f"{int(v)} Б"
+    if v < 1024 * 1024:
+        return f"{v/1024:.1f} КБ"
+    return f"{v/(1024*1024):.2f} МБ"
 
 
-def process_category(value: str, merge: bool) -> str:
-    """Единая точка обработки названия категории."""
-    if merge:
-        return merge_category(value)
-    return localize_category(value)
+def format_packets_or_bytes_combined(
+    median_val, mode_val, flows_count: int, is_bytes: bool = False,
+) -> str:
+    """
+    Умное форматирование колонки "медиана / мода":
+    - flows=1: просто значение
+    - flows>=2 и median==mode: одно значение
+    - flows>=2 и median!=mode: "медиана / мода"
+    """
+    try:
+        med = float(median_val) if median_val is not None else 0
+        mod = float(mode_val) if mode_val is not None else 0
+        n = int(flows_count)
+    except (ValueError, TypeError):
+        return str(median_val)
+
+    def fmt(v):
+        if is_bytes:
+            return format_bytes_human(v)
+        return str(int(v))
+
+    if n <= 1:
+        return fmt(med)
+
+    if abs(med - mod) < 0.01:
+        return fmt(med)
+
+    return f"{fmt(med)} / {fmt(mod)}"
 
 
-def translate_df(df: pd.DataFrame, merge_cats: bool = False) -> pd.DataFrame:
+def translate_df(df: pd.DataFrame) -> pd.DataFrame:
     """Переводит названия колонок и значения severity, форматирует даты, локализует категории."""
     out = df.copy()
     if out.empty:
@@ -223,7 +222,7 @@ def translate_df(df: pd.DataFrame, merge_cats: bool = False) -> pd.DataFrame:
     # Локализуем категории
     for col in ["category", "top_category_in_pair"]:
         if col in out.columns:
-            out[col] = out[col].map(lambda v: process_category(v, merge_cats))
+            out[col] = out[col].map(lambda v: localize_category(v))
 
     out = out.rename(columns={c: tr_col(c) for c in out.columns})
 
@@ -317,7 +316,6 @@ def frame_to_html(
     max_rows: int = 50,
     height_px: int = 360,
     filterable: bool = False,
-    merge_cats: bool = False,
 ) -> str:
     if df.empty:
         return '<div class="empty">Нет данных</div>'
@@ -328,11 +326,11 @@ def frame_to_html(
             df.head(max_rows)["category"]
             .fillna("")
             .astype(str)
-            .map(lambda v: process_category(v, merge_cats))
+            .map(lambda v: localize_category(v))
             .tolist()
         )
 
-    view = translate_df(df.head(max_rows).copy(), merge_cats=merge_cats)
+    view = translate_df(df.head(max_rows).copy())
     cols = list(view.columns)
     thead_cells = []
     for col in cols:
@@ -443,8 +441,38 @@ def enrich_incidents_with_mode(incidents: pd.DataFrame, enriched: pd.DataFrame) 
     return out
 
 
-def compute_top_entities(enriched: pd.DataFrame, incidents: pd.DataFrame,
-                          merge_cats: bool) -> dict:
+def add_combined_columns(incidents: pd.DataFrame) -> pd.DataFrame:
+    """
+    Добавляет умные объединённые колонки packets_combined и bytes_combined:
+    - flows=1: просто значение (нет смысла в статистиках)
+    - flows>=2, медиана==мода: одно число
+    - flows>=2, медиана!=мода: "медиана / мода"
+    - Байты форматируются в человекочитаемый вид (Б/КБ/МБ)
+    """
+    if incidents.empty:
+        incidents["packets_combined"] = ""
+        incidents["bytes_combined"] = ""
+        return incidents
+
+    def build_combined(row, median_col, mode_col, is_bytes):
+        return format_packets_or_bytes_combined(
+            row.get(median_col, 0),
+            row.get(mode_col, 0),
+            row.get("flows", 1),
+            is_bytes=is_bytes,
+        )
+
+    incidents = incidents.copy()
+    incidents["packets_combined"] = incidents.apply(
+        lambda r: build_combined(r, "packets_median", "packets_mode", False), axis=1,
+    )
+    incidents["bytes_combined"] = incidents.apply(
+        lambda r: build_combined(r, "bytes_median", "bytes_mode", True), axis=1,
+    )
+    return incidents
+
+
+def compute_top_entities(enriched: pd.DataFrame, incidents: pd.DataFrame) -> dict:
     result = {
         "top_clients": pd.DataFrame(),
         "top_servers": pd.DataFrame(),
@@ -511,7 +539,7 @@ def compute_top_entities(enriched: pd.DataFrame, incidents: pd.DataFrame,
                 flows=("flows", "sum"),
                 top_category_in_pair=(
                     "category",
-                    lambda s: process_category(s.value_counts().idxmax(), merge_cats) if len(s) > 0 else ""
+                    lambda s: localize_category(s.value_counts().idxmax()) if len(s) > 0 else ""
                 ),
             )
             .reset_index()
@@ -576,22 +604,16 @@ def rebucket_timeline(timeline: pd.DataFrame, target_bucket_s: int) -> pd.DataFr
     return rebucketed
 
 
-def build_category_chart(category_stats: pd.DataFrame, merge_cats: bool) -> str:
+def build_category_chart(category_stats: pd.DataFrame) -> str:
     if category_stats.empty or "category" not in category_stats.columns:
         return '<div class="empty">Нет данных по категориям</div>'
 
     src = category_stats.copy()
-    src["category"] = src["category"].map(lambda v: process_category(v, merge_cats))
+    src["category"] = src["category"].map(lambda v: localize_category(v))
 
-    # Если объединили — пересчитываем
-    if merge_cats:
-        y_col = "incidents" if "incidents" in src.columns else "flows_sum"
-        src = (
-            src.groupby("category", as_index=False)[y_col].sum()
-        )
-    else:
-        y_col = "incidents" if "incidents" in src.columns else "flows_sum"
-
+    y_col = "incidents" if "incidents" in src.columns else "flows_sum"
+    # Группируем по локализованному имени на случай если были дубли
+    src = src.groupby("category", as_index=False)[y_col].sum()
     src = src.sort_values(y_col, ascending=True)
 
     fig = px.bar(
@@ -646,13 +668,48 @@ def build_timeline_chart(timeline: pd.DataFrame) -> str:
 
     fig.update_layout(
         template="plotly_dark",
-        height=380,
+        height=420,  # чуть больше для range slider
         margin=dict(l=30, r=20, t=20, b=50),
         hovermode="x unified",
     )
+
+    # Кнопки быстрого масштаба (вид + интервалы выбора)
+    total_span_seconds = src["timeline_bucket_s"].max() - src["timeline_bucket_s"].min()
+    buttons = []
+    if total_span_seconds >= 3600:
+        buttons.append(dict(count=1, label="1ч", step="hour", stepmode="backward"))
+    if total_span_seconds >= 3 * 3600:
+        buttons.append(dict(count=3, label="3ч", step="hour", stepmode="backward"))
+    if total_span_seconds >= 6 * 3600:
+        buttons.append(dict(count=6, label="6ч", step="hour", stepmode="backward"))
+    if total_span_seconds >= 24 * 3600:
+        buttons.append(dict(count=1, label="1д", step="day", stepmode="backward"))
+    if total_span_seconds >= 7 * 24 * 3600:
+        buttons.append(dict(count=7, label="неделя", step="day", stepmode="backward"))
+    buttons.append(dict(step="all", label="весь период"))
+
     fig.update_xaxes(
         tickformat=xaxis_format,
-        nticks=15,  # plotly сам выберет оптимальное число подписей
+        nticks=15,
+        # Range slider — mini-map под графиком для скроллинга
+        rangeslider=dict(
+            visible=True,
+            thickness=0.08,
+            bgcolor="#0e1a37",
+            bordercolor="#28477f",
+            borderwidth=1,
+        ),
+        # Кнопки быстрого выбора интервала
+        rangeselector=dict(
+            buttons=buttons,
+            bgcolor="#0e1a37",
+            activecolor="#5cb3ff",
+            font=dict(color="#edf2fb"),
+            bordercolor="#28477f",
+            borderwidth=1,
+            x=0,
+            y=1.12,
+        ),
     )
 
     bucket_label = _format_bucket_label(target_bucket)
@@ -707,17 +764,20 @@ def build_severity_chart(incidents: pd.DataFrame) -> str:
         values=severity_counts["count"],
         marker_colors=colors,
         textinfo="label+percent",
+        textposition="outside",
         hovertemplate="%{label}<br>Инцидентов: %{value}<br>Доля: %{percent}<extra></extra>",
+        sort=False,
     )])
     fig.update_layout(
         template="plotly_dark",
-        height=400,  # выровнено с heatmap высотой
+        height=420,
         margin=dict(l=20, r=20, t=20, b=20),
+        showlegend=False,  # убираем легенду — подписи уже на графике
     )
     return fig_to_html(fig, include_js=False)
 
 
-def build_category_severity_heatmap(incidents: pd.DataFrame, merge_cats: bool) -> str:
+def build_category_severity_heatmap(incidents: pd.DataFrame) -> str:
     """Тепловая карта категория × серьёзность. Столбец Средний скрыт."""
     if incidents.empty or not {"category", "severity_level"}.issubset(incidents.columns):
         return '<div class="empty">Нет данных для тепловой карты</div>'
@@ -727,10 +787,9 @@ def build_category_severity_heatmap(incidents: pd.DataFrame, merge_cats: bool) -
         .size()
         .reset_index(name="count")
     )
-    pivot["category"] = pivot["category"].map(lambda v: process_category(v, merge_cats))
-    # Если merge_cats, заново группируем по упрощённым названиям
-    if merge_cats:
-        pivot = pivot.groupby(["category", "severity_level"], as_index=False)["count"].sum()
+    pivot["category"] = pivot["category"].map(lambda v: localize_category(v))
+    # Группируем по локализованному имени на случай дублей
+    pivot = pivot.groupby(["category", "severity_level"], as_index=False)["count"].sum()
 
     pivot_matrix = pivot.pivot(index="category", columns="severity_level", values="count").fillna(0)
 
@@ -758,7 +817,7 @@ def build_category_severity_heatmap(incidents: pd.DataFrame, merge_cats: bool) -
     ))
     fig.update_layout(
         template="plotly_dark",
-        height=400,  # выровнено с severity pie
+        height=420,  # выровнено с severity pie
         margin=dict(l=10, r=40, t=20, b=40),
     )
     return fig_to_html(fig, include_js=False)
@@ -768,12 +827,11 @@ def build_category_severity_heatmap(incidents: pd.DataFrame, merge_cats: bool) -
 # Фильтр-чипы
 # ============================================================
 
-def build_category_filter_chips(incidents: pd.DataFrame, table_target_id: str,
-                                 merge_cats: bool) -> str:
+def build_category_filter_chips(incidents: pd.DataFrame, table_target_id: str) -> str:
     if incidents.empty or "category" not in incidents.columns:
         return ""
 
-    localized_categories = incidents["category"].map(lambda v: process_category(v, merge_cats))
+    localized_categories = incidents["category"].map(lambda v: localize_category(v))
     counts = localized_categories.value_counts()
 
     chips = [
@@ -900,6 +958,19 @@ h1 { margin: 0 0 10px 0; font-size: 32px; }
 }
 .chart-grid > .panel {
   height: 100%;
+}
+/* Группа смежных рядов графиков — маленький отступ между рядами внутри группы */
+.chart-group .chart-grid {
+  margin-bottom: 10px;
+}
+.chart-group .chart-grid:last-child {
+  margin-bottom: 0;
+}
+.chart-group .chart-grid > .panel {
+  margin-bottom: 0;  /* отключаем дефолтный панельный margin внутри группы */
+}
+.chart-group {
+  margin-bottom: 28px;  /* увеличенный отступ между группами и после групп */
 }
 .two-cols {
   display: grid;
@@ -1115,9 +1186,10 @@ HEATMAP_EXPLAINER = (
 )
 
 MODE_VS_MEDIAN_EXPLAINER = (
-    "В таблице показаны две статистики по пакетам и байтам: «медиана» (центральное значение — "
-    "показывает стабильность) и «мода» (самое частое значение — показывает паттерн "
-    "повторяющихся сессий, например C2-маяки с идентичным размером)."
+    "В колонках «Пакетов» и «Трафик» показаны статистики по сессиям внутри инцидента: "
+    "при одной сессии — её значение, при нескольких одинаковых — единое число, "
+    "при разбросе — пара «медиана / мода». Медиана — центральное значение (стабильность), "
+    "мода — самое частое (паттерн повторяющихся сессий, характерный для C2-маяков)."
 )
 
 
@@ -1125,7 +1197,6 @@ def main() -> None:
     args = parse_args()
     report_dir = Path(args.report_dir).expanduser().resolve()
     output = Path(args.output).expanduser().resolve() if args.output else report_dir / "dashboard.html"
-    merge_cats = args.merge_categories
 
     label, label_gen = INCIDENT_LABELS.get(args.incident_label, ("инцидент", "инцидента"))
     incident_explainer = INCIDENT_EXPLAINER_TEMPLATE.format(
@@ -1133,8 +1204,6 @@ def main() -> None:
     )
 
     print(f"[ИНФО] Загрузка отчёта из: {report_dir}")
-    if merge_cats:
-        print(f"[ИНФО] Режим объединения категорий: включён")
     print(f"[ИНФО] Терминология: «{label}»")
 
     summary = load_json(report_dir / "summary.json")
@@ -1147,7 +1216,11 @@ def main() -> None:
     top_incidents = enrich_incidents_with_mode(top_incidents, enriched)
     all_incidents = enrich_incidents_with_mode(all_incidents, enriched)
 
-    entities = compute_top_entities(enriched, all_incidents, merge_cats=merge_cats)
+    # Создаём умные combined-колонки (медиана / мода в одной)
+    top_incidents = add_combined_columns(top_incidents)
+    all_incidents = add_combined_columns(all_incidents)
+
+    entities = compute_top_entities(enriched, all_incidents)
     top_clients = entities["top_clients"]
     top_servers = entities["top_servers"]
     top_ports = entities["top_ports"]
@@ -1156,7 +1229,7 @@ def main() -> None:
     top_category_raw = summary.get("top_category", "—")
     if top_category_raw is None or (isinstance(top_category_raw, float) and pd.isna(top_category_raw)):
         top_category_raw = "—"
-    top_category_display = process_category(str(top_category_raw), merge_cats)
+    top_category_display = localize_category(str(top_category_raw))
 
     critical_count = 0
     if not all_incidents.empty and "severity_level" in all_incidents.columns:
@@ -1173,19 +1246,23 @@ def main() -> None:
         metric_card("Главная категория", top_category_display),
     ])
 
-    # Ряд 1: категории + временная шкала
+    # Группа 1: обзорные графики (категории + временная шкала)
     charts_html_row1 = f'''
-    <div class="chart-grid">
-      {chart_panel(f"{label_cap} по категориям", f"Сколько {label_gen[:-1] + 'ов'} попало в каждую категорию интерпретации.", build_category_chart(category_stats, merge_cats), "chart_categories")}
-      {chart_panel("Аномалии во времени", "Количество аномальных сессий по временным интервалам.", build_timeline_chart(timeline), "chart_timeline")}
+    <div class="chart-group">
+      <div class="chart-grid">
+        {chart_panel(f"{label_cap} по категориям", f"Сколько {label_gen[:-1] + 'ов'} попало в каждую категорию интерпретации.", build_category_chart(category_stats), "chart_categories")}
+        {chart_panel("Аномалии во времени", "Количество аномальных сессий по временным интервалам.", build_timeline_chart(timeline), "chart_timeline")}
+      </div>
     </div>
     '''
 
-    # Ряд 2: pie + heatmap (синхронизированы по высоте)
+    # Группа 2: серьёзность (pie + heatmap, синхронизированы по высоте)
     charts_html_row2 = f'''
-    <div class="chart-grid">
-      {chart_panel("Распределение по уровню серьёзности", "Доля критических, высоких и прочих инцидентов.", build_severity_chart(all_incidents), "chart_severity")}
-      {chart_panel("Категория × серьёзность", "Пересечение категорий и уровней серьёзности.", build_category_severity_heatmap(all_incidents, merge_cats), "chart_heatmap", tooltip=HEATMAP_EXPLAINER)}
+    <div class="chart-group">
+      <div class="chart-grid">
+        {chart_panel("Распределение по уровню серьёзности", "Доля критических, высоких и прочих инцидентов.", build_severity_chart(all_incidents), "chart_severity")}
+        {chart_panel("Категория × серьёзность", "Пересечение категорий и уровней серьёзности.", build_category_severity_heatmap(all_incidents), "chart_heatmap", tooltip=HEATMAP_EXPLAINER)}
+      </div>
     </div>
     '''
 
@@ -1193,15 +1270,15 @@ def main() -> None:
     top_incidents_table = frame_to_html(
         top_incidents_display, "top_incidents",
         max_rows=args.top_n, height_px=500,
-        filterable=True, merge_cats=merge_cats,
+        filterable=True,
     )
-    filter_chips = build_category_filter_chips(top_incidents_display, "top_incidents", merge_cats)
+    filter_chips = build_category_filter_chips(top_incidents_display, "top_incidents")
 
-    pair_stats_html = frame_to_html(pair_stats, "pair_stats", max_rows=30, height_px=400, merge_cats=merge_cats)
+    pair_stats_html = frame_to_html(pair_stats, "pair_stats", max_rows=30, height_px=400)
     top_clients_html = frame_to_html(top_clients, "top_clients", max_rows=30, height_px=380)
     top_servers_html = frame_to_html(top_servers, "top_servers", max_rows=30, height_px=380)
     top_ports_html = frame_to_html(top_ports, "top_ports", max_rows=30, height_px=320)
-    category_stats_html = frame_to_html(category_stats, "category_stats", max_rows=50, height_px=400, merge_cats=merge_cats)
+    category_stats_html = frame_to_html(category_stats, "category_stats", max_rows=50, height_px=400)
 
     html_text = f'''<!doctype html>
 <html lang="ru">

@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FlowGuard: история запусков</title>
+  <style>
+:root {
+  --bg: #091228;
+  --panel: #0f1a33;
+  --panel-border: #213250;
+  --muted: #9fb0c9;
+  --text: #edf2fb;
+  --accent: #5cb3ff;
+  --green: #47e082;
+  --orange: #e89a3c;
+  --red: #e04747;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  padding: 24px;
+}
+.wrapper { max-width: 1400px; margin: 0 auto; }
+h1 { margin: 0 0 6px; font-size: 32px; }
+.subtitle { color: var(--muted); margin-bottom: 28px; font-size: 15px; }
+
+.agg-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.agg-card {
+  background: linear-gradient(180deg, #0c1730, #0b1630);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 16px 18px;
+}
+.agg-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.agg-label {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+.agg-insight {
+  background: rgba(92, 179, 255, 0.08);
+  border: 1px solid rgba(92, 179, 255, 0.25);
+  border-radius: 12px;
+  padding: 12px 18px;
+  margin-bottom: 28px;
+  font-size: 14px;
+}
+
+.run-card {
+  background: rgba(15, 26, 51, 0.95);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 20px 22px;
+  margin-bottom: 14px;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.run-card:hover {
+  border-color: var(--accent);
+  transform: translateX(2px);
+}
+.run-card-latest {
+  border-color: rgba(92, 179, 255, 0.6);
+  box-shadow: 0 0 0 1px rgba(92, 179, 255, 0.25);
+}
+.run-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  gap: 14px;
+}
+.run-timestamp {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.run-dataset {
+  font-size: 20px;
+  font-weight: 600;
+}
+.run-duration {
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.badge-latest {
+  display: inline-block;
+  background: var(--green);
+  color: #0e1a37;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.run-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.stat-block {
+  text-align: center;
+}
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.stat-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.run-meta {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 14px;
+  display: grid;
+  gap: 4px;
+}
+.meta-label {
+  color: var(--text);
+  font-weight: 500;
+}
+code {
+  background: rgba(255,255,255,0.05);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #b8d5f0;
+}
+.run-actions { display: flex; gap: 8px; }
+.btn-open, .btn-muted {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-decoration: none;
+  border: 1px solid var(--accent);
+}
+.btn-open {
+  background: rgba(92, 179, 255, 0.15);
+  color: var(--accent);
+}
+.btn-open:hover {
+  background: rgba(92, 179, 255, 0.25);
+}
+.btn-muted {
+  color: var(--muted);
+  border-color: var(--panel-border);
+  cursor: not-allowed;
+}
+.empty-state {
+  text-align: center;
+  color: var(--muted);
+  padding: 60px 20px;
+  border: 1px dashed var(--panel-border);
+  border-radius: 16px;
+}
+</style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>FlowGuard: история запусков</h1>
+    <div class="subtitle">
+      Полная история запусков FlowGuard pipeline.
+      Последнее обновление: 19.04.2026 13:15:07.
+    </div>
+
+    
+    <div class="agg-stats">
+      <div class="agg-card">
+        <div class="agg-value">4</div>
+        <div class="agg-label">запусков</div>
+      </div>
+      <div class="agg-card">
+        <div class="agg-value">2</div>
+        <div class="agg-label">датасетов</div>
+      </div>
+      <div class="agg-card">
+        <div class="agg-value">4 507</div>
+        <div class="agg-label">сессий всего</div>
+      </div>
+      <div class="agg-card">
+        <div class="agg-value">901</div>
+        <div class="agg-label">аномалий всего</div>
+      </div>
+      <div class="agg-card">
+        <div class="agg-value">390</div>
+        <div class="agg-label">инцидентов всего</div>
+      </div>
+      <div class="agg-card">
+        <div class="agg-value">15с</div>
+        <div class="agg-label">суммарное время</div>
+      </div>
+    </div>
+
+    <div class="agg-insight">
+      <strong>Наиболее частая главная категория:</strong> Веерное сканирование портов
+    </div>
+    
+
+    <h2 style="margin-bottom: 14px;">Хронология запусков</h2>
+    
+    <div class="run-card run-card-latest">
+      <div class="run-header">
+        <div>
+          <div class="run-timestamp">19.04.2026 13:15:07 <span class="badge-latest">Последний</span></div>
+          <div class="run-dataset">demo_showcase</div>
+        </div>
+        <div class="run-duration">⏱ 4с</div>
+      </div>
+
+      <div class="run-stats">
+        <div class="stat-block">
+          <div class="stat-value">1 476</div>
+          <div class="stat-label">сессий</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-value">300</div>
+          <div class="stat-label">аномалий (20.33%)</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-value">127</div>
+          <div class="stat-label">инцидентов</div>
+        </div>
+      </div>
+
+      <div class="run-meta">
+        <div><span class="meta-label">Модель:</span> flow_plus_ja4</div>
+        <div><span class="meta-label">Главная категория:</span> Веерное сканирование портов</div>
+        <div><span class="meta-label">Отчёты:</span> <code>/home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase</code></div>
+      </div>
+
+      <div class="run-actions">
+        <a href="file:///home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase/02_icedid_shifted/dashboard.html" class="btn-open" target="_blank">🔗 Открыть dashboard</a>
+      </div>
+    </div>
+    
+
+    <div class="run-card ">
+      <div class="run-header">
+        <div>
+          <div class="run-timestamp">19.04.2026 12:51:01 </div>
+          <div class="run-dataset">demo_showcase</div>
+        </div>
+        <div class="run-duration">⏱ 4с</div>
+      </div>
+
+      <div class="run-stats">
+        <div class="stat-block">
+          <div class="stat-value">1 476</div>
+          <div class="stat-label">сессий</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-value">279</div>
+          <div class="stat-label">аномалий (18.90%)</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-value">124</div>
+          <div class="stat-label">инцидентов</div>
+        </div>
+      </div>
+
+      <div class="run-meta">
+        <div><span class="meta-label">Модель:</span> flow_only</div>
+        <div><span class="meta-label">Главная категория:</span> Веерное сканирование портов</div>
+        <div><span class="meta-label">Отчёты:</span> <code>/home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase</code></div>
+      </div>
+
+      <div class="run-actions">
+        <a href="file:///home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase/02_icedid_shifted/dashboard.html" class="btn-open" target="_blank">🔗 Открыть dashboard</a>
+      </div>
+    </div>
+    
+
+    <div class="run-card ">
+      <div class="run-header">
+        <div>
+          <div class="run-timestamp">19.04.2026 12:31:37 </div>
+          <div class="run-dataset">datasets</div>
+        </div>
+        <div class="run-duration">⏱ 3с</div>
+      </div>
+
+      <div class="run-stats">
+        <div class="stat-block">
+          <div class="stat-value">79</div>
+          <div class="stat-label">сессий</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-value">22</div>
+          <div class="stat-label">аномалий (27.85%)</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-value">12</div>
+          <div class="stat-label">инцидентов</div>
+        </div>
+      </div>
+
+      <div class="run-meta">
+        <div><span class="meta-label">Модель:</span> flow_plus_ja4</div>
+        <div><span class="meta-label">Главная категория:</span> Подозрительный TLS-профиль</div>
+        <div><span class="meta-label">Отчёты:</span> <code>/home/morf/Desktop/Project/FlowGuard/reports/latest/datasets</code></div>
+      </div>
+
+      <div class="run-actions">
+        <a href="file:///home/morf/Desktop/Project/FlowGuard/reports/latest/datasets/03_asyncrat_xworm_shifted/dashboard.html" class="btn-open" target="_blank">🔗 Открыть dashboard</a>
+      </div>
+    </div>
+    
+
+    <div class="run-card ">
+      <div class="run-header">
+        <div>
+          <div class="run-timestamp">19.04.2026 05:16:13 </div>
+          <div class="run-dataset">demo_showcase</div>
+        </div>
+        <div class="run-duration">⏱ 4с</div>
+      </div>
+
+      <div class="run-stats">
+        <div class="stat-block">
+          <div class="stat-value">1 476</div>
+          <div class="stat-label">сессий</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-value">300</div>
+          <div class="stat-label">аномалий (20.33%)</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-value">127</div>
+          <div class="stat-label">инцидентов</div>
+        </div>
+      </div>
+
+      <div class="run-meta">
+        <div><span class="meta-label">Модель:</span> flow_plus_ja4</div>
+        <div><span class="meta-label">Главная категория:</span> Веерное сканирование портов</div>
+        <div><span class="meta-label">Отчёты:</span> <code>/home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase</code></div>
+      </div>
+
+      <div class="run-actions">
+        <a href="file:///home/morf/Desktop/Project/FlowGuard/reports/latest/demo_showcase/02_icedid_shifted/dashboard.html" class="btn-open" target="_blank">🔗 Открыть dashboard</a>
+      </div>
+    </div>
+    
+  </div>
+</body>
+</html>
