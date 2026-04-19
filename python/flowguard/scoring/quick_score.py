@@ -14,34 +14,28 @@ import pandas as pd
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Score parsed flow CSV with trained model")
     p.add_argument("--flows-csv", required=True, help="Input parsed flow CSV")
-    p.add_argument("--model-dir", required=True, help="Directory with model.joblib and metrics.json")
+    p.add_argument("--model-dir", required=True, help="Directory with model.joblib, metrics.json, feature_schema.json")
     p.add_argument(
         "--feature-set",
         required=True,
         choices=["flow_only", "flow_plus_ja4"],
-        help="Which feature schema to use",
+        help="Which feature subset to use from feature_schema.json",
     )
     p.add_argument("--outdir", required=True, help="Where to write scored outputs")
     p.add_argument(
         "--schema-json",
         default=None,
         help="Optional explicit path to feature_schema.json. "
-             "If omitted, inferred as ../../model_inputs/train/feature_schema.json from model-dir.",
+             "If omitted, script first looks inside model-dir/feature_schema.json, "
+             "then falls back to old training layout.",
     )
     p.add_argument(
         "--threshold",
         type=float,
         default=None,
-        help="Optional manual threshold override. If omitted, taken from metrics.json, else 0.5 fallback.",
+        help="Optional manual threshold override. If omitted, threshold is taken from metrics.json, else 0.5 fallback.",
     )
     return p.parse_args()
-
-
-def infer_schema_path(model_dir: Path) -> Path:
-    # model_dir expected like:
-    # .../data/processed/experiment2_source_aware/experiments/xgb/flow_plus_ja4
-    base = model_dir.parents[2]
-    return base / "model_inputs" / "train" / "feature_schema.json"
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -62,6 +56,28 @@ def resolve_threshold(metrics: dict[str, Any]) -> float:
     return 0.5
 
 
+def infer_schema_path(model_dir: Path) -> Path:
+    # 1) product layout: model-dir/feature_schema.json
+    direct = model_dir / "feature_schema.json"
+    if direct.exists():
+        return direct
+
+    # 2) fallback to old training layout
+    # expected old layout:
+    # .../data/processed/experiment2_source_aware/experiments/xgb/flow_plus_ja4
+    try:
+        base = model_dir.parents[2]
+        fallback = base / "model_inputs" / "train" / "feature_schema.json"
+        if fallback.exists():
+            return fallback
+    except Exception:
+        pass
+
+    raise FileNotFoundError(
+        f"feature_schema.json not found in model dir and old layout fallback failed: {model_dir}"
+    )
+
+
 def align_features(df: pd.DataFrame, expected_features: list[str]) -> tuple[pd.DataFrame, list[str], list[str]]:
     current_cols = list(df.columns)
 
@@ -70,14 +86,14 @@ def align_features(df: pd.DataFrame, expected_features: list[str]) -> tuple[pd.D
 
     X = df.copy()
 
-    # ВАЖНО: использовать np.nan, а не pd.NA
+    # IMPORTANT: use np.nan, not pd.NA
     for col in missing:
         X[col] = np.nan
 
-    # оставить только ожидаемые признаки в точном порядке
+    # exact feature order expected by schema
     X = X[expected_features].copy()
 
-    # возможные pd.NA -> np.nan
+    # sanitize any pd.NA that might still exist
     X = X.replace({pd.NA: np.nan})
 
     return X, missing, extra
@@ -110,8 +126,7 @@ def normalize_dtypes(X: pd.DataFrame, model: Any) -> pd.DataFrame:
 
     numeric_cols, categorical_cols = infer_column_types_from_pipeline(model)
 
-    # Если pipeline не отдал типы, пробуем мягко определить:
-    # object-колонки оставляем как object, прочие пытаемся привести к numeric.
+    # fallback if pipeline structure is unavailable
     if not numeric_cols and not categorical_cols:
         for col in X.columns:
             if pd.api.types.is_object_dtype(X[col]) or pd.api.types.is_string_dtype(X[col]):
@@ -125,22 +140,19 @@ def normalize_dtypes(X: pd.DataFrame, model: Any) -> pd.DataFrame:
 
     for col in categorical_cols:
         if col in X.columns:
-            # не string dtype, а object, чтобы sklearn спокойно ел np.nan
             X[col] = X[col].astype("object")
             X[col] = X[col].replace({pd.NA: np.nan})
 
-    # финальная зачистка
     X = X.replace({pd.NA: np.nan})
-
     return X
 
 
 def main() -> None:
     args = parse_args()
 
-    flows_csv = Path(args.flows_csv)
-    model_dir = Path(args.model_dir)
-    outdir = Path(args.outdir)
+    flows_csv = Path(args.flows_csv).expanduser().resolve()
+    model_dir = Path(args.model_dir).expanduser().resolve()
+    outdir = Path(args.outdir).expanduser().resolve()
     outdir.mkdir(parents=True, exist_ok=True)
 
     model_path = model_dir / "model.joblib"
@@ -151,7 +163,7 @@ def main() -> None:
     if not model_path.exists():
         raise FileNotFoundError(f"model.joblib not found: {model_path}")
 
-    schema_path = Path(args.schema_json) if args.schema_json else infer_schema_path(model_dir)
+    schema_path = Path(args.schema_json).expanduser().resolve() if args.schema_json else infer_schema_path(model_dir)
     if not schema_path.exists():
         raise FileNotFoundError(f"feature_schema.json not found: {schema_path}")
 
@@ -211,6 +223,7 @@ def main() -> None:
         "extra_columns_ignored": extra,
         "schema_json": str(schema_path),
         "model_path": str(model_path),
+        "metrics_path": str(metrics_path),
         "flows_csv": str(flows_csv),
     }
 

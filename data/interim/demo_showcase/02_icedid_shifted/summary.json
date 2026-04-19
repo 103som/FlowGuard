@@ -1,0 +1,27 @@
+{
+  "rows_total": 1476,
+  "anomalies_total": 300,
+  "anomaly_share": 0.2032520325203252,
+  "threshold": 0.38828972854999627,
+  "score_mean": 0.21218743920326233,
+  "score_max": 0.9990823268890381,
+  "expected_features_count": 30,
+  "actual_columns_count": 33,
+  "missing_columns_added": [
+    "ja4_present",
+    "tool",
+    "ja4_key"
+  ],
+  "extra_columns_ignored": [
+    "client_ip",
+    "server_ip",
+    "client_port",
+    "server_port",
+    "ja4_cipher_suites",
+    "ja4_extensions"
+  ],
+  "schema_json": "/home/morf/Desktop/Project/FlowGuard/models/active/flow_plus_ja4/feature_schema.json",
+  "model_path": "/home/morf/Desktop/Project/FlowGuard/models/active/flow_plus_ja4/model.joblib",
+  "metrics_path": "/home/morf/Desktop/Project/FlowGuard/models/active/flow_plus_ja4/metrics.json",
+  "flows_csv": "/home/morf/Desktop/Project/FlowGuard/data/parsed/demo_showcase/02_icedid_shifted.csv"
+}
