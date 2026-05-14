@@ -4,7 +4,7 @@
 # =============================================================================
 
 .PHONY: help install install-dev quickstart build clean clean-all check \
-        ui run retrain test test-fast test-cov test-smoke lint format \
+        ui run retrain test test-fast test-cov test-smoke test-cpp test-all lint format \
         docker docker-rebuild docker-up docker-down docker-logs docker-cli config-check
 
 BLUE   := \033[0;34m
@@ -40,6 +40,8 @@ help:                ## Показать список доступных ком�
 	@echo "  $(BLUE)test-fast$(NC)      Быстрые тесты (без slow)"
 	@echo "  $(BLUE)test-cov$(NC)       Тесты с измерением покрытия"
 	@echo "  $(BLUE)test-smoke$(NC)     Только smoke-тесты"
+	@echo "  $(BLUE)test-cpp$(NC)       C++ unit-тесты парсера"
+	@echo "  $(BLUE)test-all$(NC)       Python-тесты + C++ unit-тесты"
 	@echo ""
 	@echo "$(BOLD)Качество кода:$(NC)"
 	@echo "  $(BLUE)lint$(NC)           Линтинг (ruff)"
@@ -128,6 +130,17 @@ test-cov:            ## Запустить тесты с измерением п
 test-smoke:          ## Запустить только smoke-тесты
 	@pytest tests/ -v -m smoke
 
+test-cpp:            ## Собрать и запустить C++ unit-тесты парсера
+	@echo "$(BLUE)>>> C++ unit-тесты парсера$(NC)"
+	@cmake -S cpp/FlowParser -B cpp/FlowParser/build-tests \
+		-DCMAKE_BUILD_TYPE=Debug \
+		-DFLOWGUARD_BUILD_CPP_TESTS=ON
+	@cmake --build cpp/FlowParser/build-tests --target pcap_flow_parser_unit_tests -j$$(nproc 2>/dev/null || echo 4)
+	@ctest --test-dir cpp/FlowParser/build-tests --output-on-failure
+	@echo "$(GREEN)✓ C++ unit-тесты прошли$(NC)"
+
+test-all: test test-cpp ## Запустить Python-тесты и C++ unit-тесты
+
 # =============================================================================
 # Качество кода
 # =============================================================================
@@ -171,7 +184,7 @@ docker-cli:          ## Открыть CLI-оболочку в контейне�
 
 clean:               ## Удалить артефакты сборки и промежуточные данные
 	@echo "$(BLUE)>>> Очистка артефактов$(NC)"
-	@rm -rf cpp/FlowParser/build
+	@rm -rf cpp/FlowParser/build cpp/FlowParser/build-tests
 	@rm -rf data/parsed data/interim data/retrain
 	@rm -rf reports/latest/*
 	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
