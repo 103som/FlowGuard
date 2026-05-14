@@ -1,3 +1,0 @@
-/home/morf/Desktop/Project/FlowGuard/cpp/FlowParser/build/CMakeFiles/pcap_flow_parser.dir
-/home/morf/Desktop/Project/FlowGuard/cpp/FlowParser/build/CMakeFiles/edit_cache.dir
-/home/morf/Desktop/Project/FlowGuard/cpp/FlowParser/build/CMakeFiles/rebuild_cache.dir
