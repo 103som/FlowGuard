@@ -1,0 +1,44 @@
+{
+  "seed": 42,
+  "feature_set": "flow_only",
+  "scale_pos_weight": 1.2395956864676179,
+  "selected_threshold_from_val": 0.5912555456161499,
+  "best_val_threshold_metrics": {
+    "threshold": 0.5912555456161499,
+    "precision": 0.9985805649032711,
+    "recall": 0.993746627305336,
+    "f1": 0.9961577318685515,
+    "f2": 0.9947096671697514,
+    "balanced_accuracy": 0.995322899047414
+  },
+  "val_metrics": {
+    "threshold": 0.5912555456161499,
+    "precision": 0.9985805649032711,
+    "recall": 0.993746627305336,
+    "f1": 0.9961577318685515,
+    "balanced_accuracy": 0.995322899047414,
+    "average_precision": 0.9997613187382105,
+    "roc_auc": 0.9994233067733205,
+    "confusion_matrix": {
+      "tn": 28613,
+      "fp": 89,
+      "fn": 394,
+      "tp": 62612
+    }
+  },
+  "test_metrics": {
+    "threshold": 0.5912555456161499,
+    "precision": 0.9993665895370933,
+    "recall": 0.9646386504292274,
+    "f1": 0.9816955867507285,
+    "balanced_accuracy": 0.9817082916950606,
+    "average_precision": 0.9968955739486409,
+    "roc_auc": 0.9924727318876201,
+    "confusion_matrix": {
+      "tn": 40047,
+      "fp": 49,
+      "fn": 2834,
+      "tp": 77310
+    }
+  }
+}

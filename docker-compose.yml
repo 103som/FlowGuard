@@ -1,0 +1,47 @@
+# =============================================================================
+# FlowGuard — Docker Compose
+#
+# Быстрый запуск:
+#     docker compose up                              # Запустить веб-интерфейс
+#     docker compose up -d                           # В фоне
+#     docker compose down                            # Остановить
+#
+#     docker compose run --rm cli                    # Интерактивный CLI
+#     docker compose run --rm cli ./scripts/flowguard.sh demo_showcase flow_plus_ja4
+#
+# Доступ к UI: http://localhost:8501
+# =============================================================================
+
+services:
+  flowguard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: flowguard:latest
+    container_name: flowguard-ui
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/opt/flowguard/data
+      - ./reports:/opt/flowguard/reports
+      - ./models:/opt/flowguard/models
+      - ./logs:/opt/flowguard/logs
+      - ./flowguard.yaml:/opt/flowguard/flowguard.yaml:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+  cli:
+    image: flowguard:latest
+    container_name: flowguard-cli
+    volumes:
+      - ./data:/opt/flowguard/data
+      - ./reports:/opt/flowguard/reports
+      - ./models:/opt/flowguard/models
+      - ./logs:/opt/flowguard/logs
+      - ./flowguard.yaml:/opt/flowguard/flowguard.yaml:ro
+    profiles:
+      - cli
+    command: ["bash"]
+    stdin_open: true
+    tty: true
