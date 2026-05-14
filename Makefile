@@ -5,7 +5,7 @@
 
 .PHONY: help install install-dev quickstart build clean clean-all check \
         ui run retrain test test-fast test-cov test-smoke lint format \
-        docker docker-up docker-down docker-logs docker-cli config-check
+        docker docker-rebuild docker-up docker-down docker-logs docker-cli config-check
 
 BLUE   := \033[0;34m
 GREEN  := \033[0;32m
@@ -47,6 +47,7 @@ help:                ## Показать список доступных ком�
 	@echo ""
 	@echo "$(BOLD)Docker:$(NC)"
 	@echo "  $(BLUE)docker$(NC)         Собрать образ"
+	@echo "  $(BLUE)docker-rebuild$(NC) Пересобрать образ без кеша"
 	@echo "  $(BLUE)docker-up$(NC)      Запустить UI в контейнере"
 	@echo "  $(BLUE)docker-down$(NC)    Остановить"
 	@echo "  $(BLUE)docker-logs$(NC)    Логи контейнера"
@@ -146,20 +147,23 @@ format:              ## Отформатировать код (black + isort)
 docker:              ## Собрать Docker-образ
 	@docker compose build
 
+docker-rebuild:      ## Пересобрать Docker-образ без кеша
+	@docker compose build --no-cache
+
 docker-up:           ## Запустить FlowGuard в Docker (UI на :8501)
-	@docker compose up -d
+	@docker compose up -d flowguard
 	@echo "$(GREEN)✓ FlowGuard запущен на http://localhost:8501$(NC)"
 	@echo "  Логи:        make docker-logs"
 	@echo "  Остановить:  make docker-down"
 
 docker-down:         ## Остановить Docker-контейнеры
-	@docker compose down
+	@docker compose down --remove-orphans
 
 docker-logs:         ## Показать логи Docker-контейнера
 	@docker compose logs -f flowguard
 
 docker-cli:          ## Открыть CLI-оболочку в контейнере
-	@docker compose run --rm cli
+	@docker compose run --rm cli bash
 
 # =============================================================================
 # Очистка

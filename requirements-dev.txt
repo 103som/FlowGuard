@@ -1,26 +1,20 @@
 # =============================================================================
-# FlowGuard — dev-зависимости (тесты, линтеры, форматтеры)
-#
-# Установка: pip install -r requirements-dev.txt
-# Включает все рантайм-зависимости + инструменты разработки
+# FlowGuard — dev dependencies
 # =============================================================================
 
 -r requirements.txt
 
-# --- Тестирование ---
+# Tests
 pytest>=7.4
 pytest-cov>=4.1
 pytest-mock>=3.12
 
-# --- Линтинг и форматирование ---
+# Formatting / linting
 ruff>=0.1.0
 black>=23.10
 isort>=5.12
-
-# --- Типизация (опционально) ---
 mypy>=1.6
 types-PyYAML
 
-# --- Дополнительные утилиты для разработки ---
-ipython>=8.16
-pre-commit>=3.5
+# Experiment/evaluation plots only
+matplotlib>=3.7

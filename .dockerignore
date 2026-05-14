@@ -1,0 +1,44 @@
+# Git / editor
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+python/*.egg-info/
+
+# C++ build
+cpp/FlowParser/build/
+
+# Runtime/generated data
+data/
+reports/
+logs/
+
+# Models are mounted from host in docker-compose
+models/
+
+# Large artifacts
+*.pcap
+*.pcapng
+*.parquet
+*.csv
+*.xlsx
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# Docs generated separately / local drafts
+*.docx
+*.pdf
